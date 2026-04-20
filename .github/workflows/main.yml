@@ -1,24 +1,46 @@
 name: Android CI
 on:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: set up JDK 17
+      
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
+          
       - name: Build with Gradle
         run: | 
           cd apps/android
           chmod +x gradlew
           ./gradlew assembleDebug
-      - name: Upload APK
+          
+      - name: Find and stage APKs
+        run: |
+          # Create a clean staging directory
+          mkdir -p ./apk-staging
+          
+          # Dynamically find all APKs in the build outputs
+          find apps/android -type f -path "*/build/outputs/apk/*" -name "*.apk" -exec cp {} ./apk-staging/ \;
+          
+          # Fail gracefully if no APKs were produced
+          if [ -z "$(ls -A ./apk-staging/)" ]; then
+            echo "❌ Error: No APK files found after build!"
+            exit 1
+          fi
+          
+          echo "✅ Successfully staged $(ls ./apk-staging/*.apk | wc -l) APK(s) for upload"
+          
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: apps/android/app/build/outputs/apk/debug/*.apk
+          name: app-debug-apks
+          path: ./apk-staging/*.apk
+          retention-days: 30
+          if-no-files-found: error
